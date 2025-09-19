@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
@@ -25,18 +26,29 @@ var upgrader = websocket.Upgrader{
 type Client struct {
 	conn *websocket.Conn
 	mu   sync.Mutex
+	name string
+	id   string
 }
 
 // NewClient creates and initializes a new Client.
-func NewClient(conn *websocket.Conn) *Client {
-	return &Client{conn: conn}
+func NewClient(conn *websocket.Conn, name string) *Client {
+	return &Client{
+		conn: conn,
+		name: name,
+		id:   uuid.New().String(),
+	}
+}
+
+type broadcastMsg struct {
+	message []byte
+	sender  *Client
 }
 
 // Manager is a server that manages the WebSocket connections.
 type Manager struct {
 	clients    map[*Client]bool
 	mu         sync.Mutex
-	broadcast  chan []byte
+	broadcast  chan broadcastMsg
 	register   chan *Client
 	unregister chan *Client
 }
@@ -45,7 +57,7 @@ type Manager struct {
 func NewManager() *Manager {
 	return &Manager{
 		clients:    make(map[*Client]bool),
-		broadcast:  make(chan []byte),
+		broadcast:  make(chan broadcastMsg),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 	}
@@ -55,9 +67,29 @@ func NewManager() *Manager {
 func (m *Manager) Run() {
 	for {
 		select {
-		case client := <-m.register:
+		case newClient := <-m.register:
+			// New Client has connected.
 			m.mu.Lock()
-			m.clients[client] = true
+			m.clients[newClient] = true
+
+			for client := range m.clients {
+				if client == newClient {
+					continue // Skip sender
+				}
+				go func(c *Client) {
+					c.mu.Lock()
+					newClientHasArrivedMessage := []byte(newClient.name + " has connected.")
+					//newClientHasArrivedMessage := []byte(newClient.name + " has entered. ID: " + newClient.id)
+					err := c.conn.WriteMessage(websocket.TextMessage, newClientHasArrivedMessage)
+					c.mu.Unlock()
+					if err != nil {
+						log.Printf("Error sending message to client: %v", err)
+						c.conn.Close()
+						m.unregister <- c
+					}
+				}(client)
+			}
+
 			m.mu.Unlock()
 			log.Println("New client connected. Total clients:", len(m.clients))
 
@@ -70,13 +102,15 @@ func (m *Manager) Run() {
 			}
 			m.mu.Unlock()
 
-		case message := <-m.broadcast:
+		case bmsg := <-m.broadcast:
 			m.mu.Lock()
 			for client := range m.clients {
-				// Use a goroutine to send the message to avoid blocking the main broadcast loop.
+				if client == bmsg.sender {
+					continue // Skip sender
+				}
 				go func(c *Client) {
 					c.mu.Lock()
-					err := c.conn.WriteMessage(websocket.TextMessage, message)
+					err := c.conn.WriteMessage(websocket.TextMessage, bmsg.message)
 					c.mu.Unlock()
 					if err != nil {
 						log.Printf("Error sending message to client: %v", err)
@@ -87,23 +121,37 @@ func (m *Manager) Run() {
 			}
 			m.mu.Unlock()
 		}
+
 	}
 }
 
 // wsHandler handles WebSocket requests.
 func (m *Manager) wsHandler(w http.ResponseWriter, r *http.Request) {
-	// Upgrade the HTTP connection to a WebSocket connection.
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("Upgrade failed:", err)
 		return
 	}
 
-	// Create a new client and register it with the manager.
-	client := NewClient(conn)
+	// Read the first message as the username
+	_, nameMsg, err := conn.ReadMessage()
+	if err != nil {
+		log.Println("Failed to read username:", err)
+		conn.Close()
+		return
+	}
+	raw := string(nameMsg)
+	prefix := "UserEntering: "
+	var name string
+	if len(raw) >= len(prefix) && raw[:len(prefix)] == prefix {
+		name = raw[len(prefix):]
+	} else {
+		name = raw // fallback if prefix not present
+	}
+
+	client := NewClient(conn, name)
 	m.register <- client
 
-	// Start a goroutine to read messages from the client.
 	go m.readMessages(client)
 }
 
@@ -119,6 +167,8 @@ func (m *Manager) readMessages(client *Client) {
 		if err != nil {
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 				log.Println("Client disconnected gracefully.")
+				disconnectMsg := fmt.Sprintf("%s has left.", client.name)
+				m.broadcast <- broadcastMsg{message: []byte(disconnectMsg), sender: client}
 			} else {
 				log.Println("Read error:", err)
 			}
@@ -127,7 +177,7 @@ func (m *Manager) readMessages(client *Client) {
 		// Only handle text messages.
 		if messageType == websocket.TextMessage {
 			// Send the received message to the broadcast channel.
-			m.broadcast <- p
+			m.broadcast <- broadcastMsg{message: p, sender: client}
 			log.Printf("Received message: %s", string(p))
 		}
 	}
