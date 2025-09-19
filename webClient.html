@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Go Chat Client</title>
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+
+    <!-- Chat Container -->
+    <div class="flex flex-col w-full max-w-xl bg-white rounded-2xl shadow-xl overflow-hidden h-[80vh]">
+        <!-- Header -->
+        <header class="bg-gray-800 text-white p-4 text-center rounded-t-2xl">
+            <h1 class="text-xl font-bold">Go WebSocket Chat</h1>
+        </header>
+
+        <!-- Message Display Area -->
+        <div id="messages" class="flex-1 p-4 overflow-y-auto space-y-4">
+            <!-- Messages will appear here -->
+        </div>
+
+        <!-- Message Input Form -->
+        <form id="messageForm" class="p-4 bg-gray-100 flex items-center space-x-2 rounded-b-2xl">
+            <input 
+                type="text" 
+                id="messageInput" 
+                class="flex-1 p-3 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
+                placeholder="Type a message..."
+                autocomplete="off"
+            />
+            <button 
+                type="submit" 
+                class="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors duration-200 transform hover:scale-105"
+            >
+                Send
+            </button>
+        </form>
+    </div>
+
+    <script>
+        const messageInput = document.getElementById('messageInput');
+        const messageForm = document.getElementById('messageForm');
+        const messagesDiv = document.getElementById('messages');
+
+        // Connect to the Go WebSocket server
+        const socket = new WebSocket('ws://localhost:8080/ws');
+
+        // Function to display messages in the chat window
+        function displayMessage(text) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('bg-blue-100', 'p-3', 'rounded-xl', 'max-w-[75%]', 'break-words');
+            messageElement.textContent = text;
+            messagesDiv.appendChild(messageElement);
+            // Scroll to the latest message
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // Event handler for when the connection is open
+        socket.onopen = function(event) {
+            console.log('WebSocket connection established.');
+            displayMessage('You are connected to the chat.');
+        };
+
+        // Event handler for when a message is received from the server
+        socket.onmessage = function(event) {
+            console.log('Message received:', event.data);
+            // Display the message received from the server
+            displayMessage(event.data);
+        };
+
+        // Event handler for when the connection is closed
+        socket.onclose = function(event) {
+            if (event.wasClean) {
+                console.log(`Connection closed cleanly, code=${event.code}, reason=${event.reason}`);
+            } else {
+                console.error('Connection died');
+            }
+            displayMessage('Disconnected from the chat.');
+        };
+
+        // Event handler for errors
+        socket.onerror = function(error) {
+            console.error('WebSocket Error:', error);
+            displayMessage('Connection error. Is the server running?');
+        };
+
+        // Event handler for form submission
+        messageForm.addEventListener('submit', function(e) {
+            e.preventDefault(); // Prevent the form from refreshing the page
+            const message = messageInput.value.trim();
+            if (message === '') {
+                return;
+            }
+            // Send the message to the WebSocket server
+            if (socket.readyState === WebSocket.OPEN) {
+                socket.send(message);
+                messageInput.value = ''; // Clear the input field
+            } else {
+                console.error('WebSocket is not open. Cannot send message.');
+                displayMessage('Could not send message. Connection is not open.');
+            }
+        });
+
+    </script>
+</body>
+</html>
