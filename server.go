@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -20,6 +21,12 @@ var upgrader = websocket.Upgrader{
 	// development with a separate frontend. In a production environment,
 	// you should restrict this to your specific domain.
 	CheckOrigin: func(r *http.Request) bool { return true }, // TODO: Restrict in production
+}
+
+// UserListMessage struct to be sent as JSON
+type UserListMessage struct {
+	Type  string   `json:"type"`
+	Users []string `json:"users"`
 }
 
 // Client represents a single connected user.
@@ -72,22 +79,28 @@ func (m *Manager) Run() {
 			m.mu.Lock()
 			m.clients[newClient] = true
 
+			//userNames := []string{} // Translate clients into an string array
 			for client := range m.clients {
+				//userNames = append(userNames, client.name) // TODO: need to convert it every time ?
 				if client == newClient {
-					continue // Skip sender
+					//continue // Skip sender
+				} else {
+					go func(c *Client) {
+						c.mu.Lock()
+						newClientHasArrivedMessage := []byte(newClient.name + " has connected.")
+						//newClientHasArrivedMessage := []byte(newClient.name + " has entered. ID: " + newClient.id)
+						err := c.conn.WriteMessage(websocket.TextMessage, newClientHasArrivedMessage)
+						c.mu.Unlock()
+						if err != nil {
+							log.Printf("Error sending message to client: %v", err)
+							c.conn.Close()
+							m.unregister <- c
+						}
+					}(client)
 				}
-				go func(c *Client) {
-					c.mu.Lock()
-					newClientHasArrivedMessage := []byte(newClient.name + " has connected.")
-					//newClientHasArrivedMessage := []byte(newClient.name + " has entered. ID: " + newClient.id)
-					err := c.conn.WriteMessage(websocket.TextMessage, newClientHasArrivedMessage)
-					c.mu.Unlock()
-					if err != nil {
-						log.Printf("Error sending message to client: %v", err)
-						c.conn.Close()
-						m.unregister <- c
-					}
-				}(client)
+
+				UpdateUserList(m)
+
 			}
 
 			m.mu.Unlock()
@@ -95,11 +108,15 @@ func (m *Manager) Run() {
 
 		case client := <-m.unregister:
 			m.mu.Lock()
+
 			if _, ok := m.clients[client]; ok {
 				delete(m.clients, client)
 				client.conn.Close()
 				log.Println("Client disconnected. Total clients:", len(m.clients))
 			}
+
+			UpdateUserList(m)
+
 			m.mu.Unlock()
 
 		case bmsg := <-m.broadcast:
@@ -206,4 +223,34 @@ func main() {
 
 	fmt.Printf("Go WebSocket server started on port %s\n", port)
 	log.Fatal(server.ListenAndServe())
+}
+
+func UpdateUserList(m *Manager) {
+	userNames := []string{} // Translate clients into an string array
+	// need to convert it every time ?
+	for client := range m.clients {
+		userNames = append(userNames, client.name) // TODO: Super ineficient.
+	}
+	// updateUserList.
+	userListMsg := UserListMessage{
+		Type:  "userList",
+		Users: userNames,
+	}
+	// Marshal the struct into a JSON byte slice
+	jsonMsg, err := json.Marshal(userListMsg)
+	if err != nil {
+		log.Printf("Error marshalling user list: %v", err)
+		return
+	}
+	// Loop through all clients and send the message
+	for client := range m.clients {
+		client.mu.Lock()
+		// client.conn.WriteMessage is a blocking call. For production,
+		// you should send this over a channel to a client goroutine.
+		if err := client.conn.WriteMessage(websocket.TextMessage, jsonMsg); err != nil {
+			log.Printf("Error sending user list to client: %v", err)
+		}
+
+		client.mu.Unlock()
+	}
 }

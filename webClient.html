@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Go Chat Client</title>
+    <title> Xat </title>
     <!-- Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -37,8 +37,10 @@
         }
     </style>
 </head>
-<body class="flex items-center justify-center min-h-screen p-4">
 
+
+<body class="bg-gray-100 flex h-screen">
+<!-- <body class="flex items-center justify-center min-h-screen p-4"> -->
     <!-- Username Modal -->
     <div id="usernameModal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50 transition-opacity duration-300 opacity-100">
         <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm transform scale-100 transition-transform duration-300">
@@ -63,33 +65,25 @@
     </div>
 
     <!-- Chat Container -->
-    <div class="flex flex-col w-full max-w-6xl bg-white rounded-2xl shadow-xl overflow-hidden h-[95vh] scale-95 opacity-0 transition-transform duration-300" id="chatContainer">
-        <!-- Header -->
-        <header class="bg-gray-800 text-white p-4 text-center rounded-t-2xl">
-            <h1 class="text-xl font-bold">Go WebSocket Chat</h1>
+    <div class="flex-1 flex flex-col h-full">
+
+        <header class="bg-blue-600 text-white p-4 shadow-md z-10">
+            <h1 class="text-xl font-bold">Go Chat</h1>
         </header>
 
-        <!-- Message Display Area -->
-        <div id="messages" class="flex-1 p-4 overflow-y-auto space-y-4">
-            <!-- Messages will appear here -->
-        </div>
+        <div id="messages" class="flex-1 overflow-y-auto p-2 space-y-2"> </div>
 
-        <!-- Message Input Form -->
-        <form id="messageForm" class="p-4 bg-gray-100 flex items-center space-x-2 rounded-b-2xl">
-            <input 
-                type="text" 
-                id="messageInput" 
-                class="flex-1 p-3 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
-                placeholder="Type a message..."
-                autocomplete="off"
-            />
-            <button 
-                type="submit" 
-                class="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors duration-200 transform hover:scale-105"
-            >
-                Send
-            </button>
+        <form id="messageForm" class="flex p-4 bg-white border-t border-gray-200 shadow-inner">
+            <input type="text" id="messageInput" placeholder="Type a message..." class="flex-1 p-2 border border-gray-300 focus:outline-none focus:border-blue-500">
+            <button type="submit" class="bg-blue-500 text-white p-2 rounded-r-lg hover:bg-blue-600 transition-colors duration-200">Send</button>
         </form>
+    </div>
+
+    <!-- Users connected -->
+    <div id="userList" class="w-64 bg-gray-50 border-l border-gray-300 overflow-y-auto p-4 flex-shrink-0 shadow-lg">
+        <h3 class="font-bold text-lg mb-4 text-gray-800 border-b pb-2">Users Online</h3>
+        <ul id="usersContainer" class="space-y-2">
+            </ul>
     </div>
 
     <script>
@@ -122,7 +116,7 @@
             }
 
             messageElement.textContent = text;
-            
+
             messageContainer.appendChild(messageElement);
             messagesDiv.appendChild(messageContainer);
             
@@ -157,8 +151,21 @@
                 // Event handler for when a message is received from the server
                 socket.onmessage = function(event) {
                     console.log('Message received:', event.data);
-                    // Display the message received from the server
-                    displayMessage(event.data);
+
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.type === 'userList') {
+                            updateUserList(data.users);
+                        } else if (data.type === 'chatMessage') {
+                            // Display incoming JSON chat message from another user
+                            displayMessage(`${data.username}: ${data.content}`);
+                        }
+                    } catch (e) {
+                        // If the message is not valid JSON, it might be a plain text
+                        // system message (e.g., "Connected to the chat.")
+                        const message = event.data;
+                        displayMessage(message);
+                    }
                 };
 
                 // Event handler for when the connection is closed
@@ -187,17 +194,53 @@
                 return;
             }
             // Add the username to the message
-            const fullMessage = `${username}: ${message}`
-;
+            //const fullMessage = `${username}: ${message}`;
+
+            // Create a JSON object for the message
+            const messageData = {
+                type: 'chatMessage', // A type to identify the message
+                username: username,
+                content: message
+            };
+
+            // Send the JSON object as a string to the WebSocket server
+            socket.send(JSON.stringify(messageData));
+
+            // Display your own message instantly
+            // NOTE: You may want to change this to wait for server confirmation to avoid
+            // displaying messages that fail to send. For now, we'll keep it for immediate feedback.
+            displayMessage(`${username}: ${message}`, true); // TODO. RM.
+            messageInput.value = ''; // Clear the input field
+
+
             
             // Send the message to the WebSocket server
-            socket.send(fullMessage);
+            //socket.send(fullMessage);
             
             // Display your own message instantly with a different style
-            displayMessage(fullMessage, true);
-            messageInput.value = ''; // Clear the input field
+            //displayMessage(fullMessage, true);
+            //messageInput.value = ''; // Clear the input field
         });
 
     </script>
+
+
+<script>
+    // All Users list online.
+    function updateUserList(users) {
+        const usersContainer = document.getElementById('usersContainer');
+        usersContainer.innerHTML = ''; // Clear the current list
+
+        users.forEach(username => {
+            const userItem = document.createElement('li');
+            userItem.classList.add('text-gray-700', 'truncate');
+            userItem.textContent = username;
+            usersContainer.appendChild(userItem);
+        });
+    }
+</script>
+
+
+
 </body>
 </html>
