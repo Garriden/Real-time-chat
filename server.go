@@ -12,6 +12,27 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+type MessageData struct {
+	Type     string `json:"type"`
+	Username string `json:"username"`
+	Content  string `json:"content"`
+}
+
+func BuildJson(messageType, username, content string) ([]byte, error) {
+	message := MessageData{
+		Type:     messageType,
+		Username: username,
+		Content:  content,
+	}
+
+	jsonData, err := json.Marshal(message)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+
+	return jsonData, nil
+}
+
 // We'll need to define an Upgrader.
 // It will be used to upgrade a standard HTTP connection to a WebSocket connection.
 var upgrader = websocket.Upgrader{
@@ -80,6 +101,7 @@ func (m *Manager) Run() {
 			m.clients[newClient] = true
 
 			//userNames := []string{} // Translate clients into an string array
+			// TODO: Broadcast ?
 			for client := range m.clients {
 				//userNames = append(userNames, client.name) // TODO: need to convert it every time ?
 				if client == newClient {
@@ -87,15 +109,19 @@ func (m *Manager) Run() {
 				} else {
 					go func(c *Client) {
 						c.mu.Lock()
-						newClientHasArrivedMessage := []byte(newClient.name + " has connected.")
-						//newClientHasArrivedMessage := []byte(newClient.name + " has entered. ID: " + newClient.id)
-						err := c.conn.WriteMessage(websocket.TextMessage, newClientHasArrivedMessage)
+
+						//newClientHasArrivedMessage := []byte(newClient.name + " has connected.")
+						jsonMessage, _ := BuildJson("connection", newClient.name, " has connected.")
+						err := c.conn.WriteMessage(websocket.TextMessage, jsonMessage)
+
 						c.mu.Unlock()
+
 						if err != nil {
 							log.Printf("Error sending message to client: %v", err)
 							c.conn.Close()
 							m.unregister <- c
 						}
+
 					}(client)
 				}
 
@@ -184,8 +210,10 @@ func (m *Manager) readMessages(client *Client) {
 		if err != nil {
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 				log.Println("Client disconnected gracefully.")
-				disconnectMsg := fmt.Sprintf("%s has left.", client.name)
-				m.broadcast <- broadcastMsg{message: []byte(disconnectMsg), sender: client}
+
+				jsonMessage, _ := BuildJson("connection", client.name, " has left.")
+
+				m.broadcast <- broadcastMsg{message: jsonMessage, sender: client}
 			} else {
 				log.Println("Read error:", err)
 			}
@@ -243,6 +271,7 @@ func UpdateUserList(m *Manager) {
 		return
 	}
 	// Loop through all clients and send the message
+	// TODO: Bcast ?
 	for client := range m.clients {
 		client.mu.Lock()
 		// client.conn.WriteMessage is a blocking call. For production,

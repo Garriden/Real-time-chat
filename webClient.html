@@ -13,6 +13,7 @@
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f3f4f6;
+            font-size: 14px; /* 16 default */
         }
         .message-container {
             display: flex;
@@ -20,7 +21,7 @@
         }
         .message-bubble {
             max-width: 75%;
-            padding: 0.75rem;
+            padding: 0.65rem;
             border-radius: 1rem;
             word-wrap: break-word;
         }
@@ -30,8 +31,17 @@
             align-self: flex-end;
             margin-left: auto;
         }
-        .other-message {
-            background-color: #e5e7eb; /* Gray-200 */
+        .system-message {
+            display: block;
+            width: 50%;
+            align-self: flex-start;
+            margin: 0;
+            padding: 0rem 0; /* vertical padding */
+            color: rgb(100, 100, 113);
+            font-size: 0.875rem; /* This is a common size for smaller text */
+        }
+        .anotherUser-message {
+            background-color: #dae0eb; /* Gray-200 */
             color: #1f2937; /* Gray-800 */
             align-self: flex-start;
         }
@@ -53,6 +63,7 @@
                     placeholder="Your Name"
                     autocomplete="off"
                     required
+                    autofocus
                 />
                 <button 
                     type="submit" 
@@ -71,7 +82,8 @@
             <h1 class="text-xl font-bold">Go Chat</h1>
         </header>
 
-        <div id="messages" class="flex-1 overflow-y-auto p-2 space-y-2"> </div>
+         <!-- Can reduce the gap between messages -->
+        <div id="messages" class="flex-1 overflow-y-auto p-1 space-y-1"> </div>
 
         <form id="messageForm" class="flex p-4 bg-white border-t border-gray-200 shadow-inner">
             <input type="text" id="messageInput" placeholder="Type a message..." class="flex-1 p-2 border border-gray-300 focus:outline-none focus:border-blue-500">
@@ -99,20 +111,22 @@
         let socket = null;
 
         // Function to display messages in the chat window
-        function displayMessage(text, isUser = false) {
+        function displayMessage(text, isUser = false, isSystem = false) {
             const messageContainer = document.createElement('div');
             messageContainer.classList.add('message-container');
 
             const messageElement = document.createElement('div');
             messageElement.classList.add('message-bubble');
 
-            // Check if it's a system message (user joined/left)
-            if(text.includes("has joined the chat!") || text.includes("has left the chat.")) {
-                messageElement.classList.add('system-message');
+            if(isSystem) {
                 messageContainer.classList.remove('message-container');
-                messageContainer.classList.add('flex', 'justify-center', 'w-full');
+                messageContainer.classList.remove('message-bubble');
+                messageElement.classList.add('system-message');
+                //messageContainer.classList.add('flex', 'justify-center', 'w-full');
+            } else if(isUser) {
+                messageElement.classList.add('user-message');
             } else {
-                messageElement.classList.add(isUser ? 'user-message' : 'other-message');
+                messageElement.classList.add('anotherUser-message');
             }
 
             messageElement.textContent = text;
@@ -145,7 +159,7 @@
                 socket.onopen = function(event) {
                     console.log('WebSocket connection established.');
                     socket.send("UserEntering: " + username);
-                    displayMessage('You are connected to the chat.');
+                    displayMessage('You are connected to the chat.', false, true);
                 };
 
                 // Event handler for when a message is received from the server
@@ -154,11 +168,13 @@
 
                     try {
                         const data = JSON.parse(event.data);
-                        if (data.type === 'userList') {
+                        if(data.type === 'userList') {
                             updateUserList(data.users);
-                        } else if (data.type === 'chatMessage') {
+                        } else if(data.type === 'chatMessage') {
                             // Display incoming JSON chat message from another user
                             displayMessage(`${data.username}: ${data.content}`);
+                        } else if(data.type === 'connection') {
+                            displayMessage(`${data.username} ${data.content}`, false, true);
                         }
                     } catch (e) {
                         // If the message is not valid JSON, it might be a plain text
@@ -175,13 +191,13 @@
                     } else {
                         console.error('Connection died');
                     }
-                    displayMessage('Disconnected from the chat.');
+                    displayMessage('Disconnected from the chat.', false, true);
                 };
 
                 // Event handler for errors
                 socket.onerror = function(error) {
                     console.error('WebSocket Error:', error);
-                    displayMessage('Connection error. Is the server running?');
+                    displayMessage('Connection error. Is the server running?', false, true);
                 };
             }
         });
@@ -207,12 +223,8 @@
             socket.send(JSON.stringify(messageData));
 
             // Display your own message instantly
-            // NOTE: You may want to change this to wait for server confirmation to avoid
-            // displaying messages that fail to send. For now, we'll keep it for immediate feedback.
-            displayMessage(`${username}: ${message}`, true); // TODO. RM.
+            displayMessage(`${message}`, true, false);
             messageInput.value = ''; // Clear the input field
-
-
             
             // Send the message to the WebSocket server
             //socket.send(fullMessage);
