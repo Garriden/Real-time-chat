@@ -20,6 +20,8 @@
             align-items: flex-start;
         }
         .message-bubble {
+            display: flex;
+            align-items: flex-start;
             max-width: 75%;
             padding: 0.65rem;
             border-radius: 1rem;
@@ -35,7 +37,7 @@
             display: block;
             width: 50%;
             align-self: flex-start;
-            margin: 0;
+            margin-left: 1rem;
             padding: 0rem 0; /* vertical padding */
             color: rgb(100, 100, 113);
             font-size: 0.875rem; /* This is a common size for smaller text */
@@ -44,6 +46,21 @@
             background-color: #dae0eb; /* Gray-200 */
             color: #1f2937; /* Gray-800 */
             align-self: flex-start;
+        }
+        .message-content {
+            flex-grow: 1; /* Use a flex-grow on the content to push the time down */
+            margin-bottom: -0.25rem; /* Adjust this value to control the "dip" */
+        }
+        .message-time {
+            /*display: flex;*/
+            font-size: 0.6rem; /* Smaller font size */
+            color: rgba(255, 255, 255, 0.5); /* Lighter color for user messages */
+            margin-top: 0rem;   /* Pushes it down slightly */
+            margin-left: 1rem;    /* Pushes it to the right */
+            align-self: flex-end; /* Aligns it to the end of the flex container */
+        }
+        .anotherUser-message .message-time {
+            color: rgba(31, 41, 55, 0.5); /* Lighter color for other user messages */
         }
     </style>
 </head>
@@ -86,7 +103,7 @@
         <div id="messages" class="flex-1 overflow-y-auto p-1 space-y-1"> </div>
 
         <form id="messageForm" class="flex p-4 bg-white border-t border-gray-200 shadow-inner">
-            <input type="text" id="messageInput" placeholder="Type a message..." class="flex-1 p-2 border border-gray-300 focus:outline-none focus:border-blue-500">
+            <input type="text" id="messageInput" placeholder="Type a message..." class="flex-1 p-2 border border-gray-300 focus:outline-none focus:border-blue-500" autofocus autocomplete="off">
             <button type="submit" class="bg-blue-500 text-white p-2 rounded-r-lg hover:bg-blue-600 transition-colors duration-200">Send</button>
         </form>
     </div>
@@ -129,8 +146,16 @@
                 messageElement.classList.add('anotherUser-message');
             }
 
-            messageElement.textContent = text;
+            messageElement.textContent = text + "   ";
 
+            // Create the time element
+            const timeElement = document.createElement('span');
+            timeElement.classList.add('message-time');
+            const now = new Date();
+            const timeString = `${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')}`;
+            timeElement.textContent = timeString;
+
+            messageElement.appendChild(timeElement);
             messageContainer.appendChild(messageElement);
             messagesDiv.appendChild(messageContainer);
             
@@ -148,8 +173,9 @@
                 usernameModal.classList.add('opacity-0');
                 setTimeout(() => {
                     usernameModal.style.display = 'none';
-                    chatContainer.classList.remove('scale-95', 'opacity-0');
-                    chatContainer.classList.add('scale-100', 'opacity-100');
+                    //chatContainer.classList.remove('scale-95', 'opacity-0');
+                    //chatContainer.classList.add('scale-100', 'opacity-100');
+                    messageInput.focus();
                 }, 300);
 
                 // Initialize WebSocket connection
