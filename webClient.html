@@ -17,11 +17,15 @@
         }
         .message-container {
             display: flex;
+            flex-direction: column; /* Stack children vertically */
             align-items: flex-start;
+            margin-bottom: 0.2rem; /* Add some space between messages */
         }
         .message-bubble {
             display: flex;
-            align-items: flex-start;
+            /*flex-direction: column; /* Stacks children vertically */
+            flex-wrap: wrap; /* Allows content to wrap to a new line */
+            align-items: flex-end;
             max-width: 75%;
             padding: 0.65rem;
             border-radius: 1rem;
@@ -58,6 +62,15 @@
             margin-top: 0rem;   /* Pushes it down slightly */
             margin-left: 1rem;    /* Pushes it to the right */
             align-self: flex-end; /* Aligns it to the end of the flex container */
+        }
+        .message-sender {
+            font-weight: bold;
+            color: inherit; /* Use the same color as the bubble text */
+            font-size: 0.8rem; /* Smaller font size */
+            /* color: rgb(0, 0, 0); /* color for user messages */
+            margin-bottom: 0.2rem; /* Space between sender and bubble */
+            margin-left: 0.1rem; /* Indent slightly to align with bubble */
+            margin-right: 0.1rem;
         }
         .anotherUser-message .message-time {
             color: rgba(31, 41, 55, 0.5); /* Lighter color for other user messages */
@@ -126,28 +139,33 @@
         
         let username = '';
         let socket = null;
+        let lastSender = null;
 
         // Function to display messages in the chat window
-        function displayMessage(text, isUser = false, isSystem = false) {
+        function displayMessage(text, isUser = false, isSystem = false, sender = null) {
             const messageContainer = document.createElement('div');
             messageContainer.classList.add('message-container');
 
             const messageElement = document.createElement('div');
             messageElement.classList.add('message-bubble');
 
-            if(isSystem) {
-                messageContainer.classList.remove('message-container');
-                messageContainer.classList.remove('message-bubble');
-                messageElement.classList.add('system-message');
-                //messageContainer.classList.add('flex', 'justify-center', 'w-full');
-            } else if(isUser) {
-                messageElement.classList.add('user-message');
-            } else {
-                messageElement.classList.add('anotherUser-message');
+            // Conditionally handle the sender for other users
+            if(!isUser && !isSystem && sender) {
+                if(sender !== lastSender) {
+                    const senderElement = document.createElement('div');
+                    senderElement.classList.add('message-sender');
+                    senderElement.textContent = sender + ":";
+                    messageContainer.appendChild(senderElement);
+                }
+                lastSender = sender;
+            } else if(isUser || isSystem) {
+                lastSender = null;
             }
 
-            messageElement.textContent = text + "   ";
-
+            // Now, handle the message text and time
+            const messageTextElement = document.createElement('span');
+            messageTextElement.textContent = text;
+            
             // Create the time element
             const timeElement = document.createElement('span');
             timeElement.classList.add('message-time');
@@ -155,10 +173,26 @@
             const timeString = `${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')}`;
             timeElement.textContent = timeString;
 
+            // Append text and time to the message bubble
+            messageElement.appendChild(messageTextElement);
             messageElement.appendChild(timeElement);
+
+            // Apply specific classes based on message type
+            if(isSystem) {
+                // System messages have a different structure
+                messageContainer.classList.remove('message-container');
+                messageElement.classList.add('system-message');
+                messageElement.textContent = text;
+            } else if(isUser) {
+                messageElement.classList.add('user-message');
+            } else {
+                messageElement.classList.add('anotherUser-message');
+            }
+
+            // Append the final message element to the container
             messageContainer.appendChild(messageElement);
             messagesDiv.appendChild(messageContainer);
-            
+
             // Scroll to the latest message
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
@@ -198,7 +232,8 @@
                             updateUserList(data.users);
                         } else if(data.type === 'chatMessage') {
                             // Display incoming JSON chat message from another user
-                            displayMessage(`${data.username}: ${data.content}`);
+                            //displayMessage(`${data.username}: ${data.content}`);
+                            displayMessage(`${data.content}`, false, false, data.username);
                         } else if(data.type === 'connection') {
                             displayMessage(`${data.username} ${data.content}`, false, true);
                         }
